@@ -9,7 +9,9 @@ macOS desktop app: paste or type text, choose a **Category** and **Style**, add 
 ## 1. Prerequisites
 
 - **Node.js** 18+
-- **Rust** (e.g. `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- **Rust** (Cargo):
+  - **Homebrew (ajánlott):** `brew install rust`
+  - Vagy rustup: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` (ne használd sudo-t)
 - **macOS** (target platform)
 
 ---
@@ -44,6 +46,29 @@ npm run tauri dev
 ```
 
 First run will compile Rust and open the app window. The frontend is served by Vite at `http://localhost:5173`.
+
+### Makefile (egyszerű parancsok)
+
+A projekt tartalmaz egy `Makefile`-t, így rövidebb parancsokkal is futtatható:
+
+| Parancs | Mit csinál |
+|---------|------------|
+| `make` / `make help` | Kiírja az elérhető parancsokat |
+| `make install` | `npm install` |
+| `make dev` | Tauri dev szerver; ha van `.env`, abból betölti a `CONTENTIZER_API_KEY`-t |
+| `make build` | Production build (frontend + Rust) |
+| `make clean` | Törli a `node_modules`, `dist` és a Rust `target` mappát |
+| `make lint` | ESLint |
+| `make check-rust` | Megnézi, hogy a Cargo a PATH-on van-e |
+
+Példa:
+
+```bash
+make install   # egyszer
+make dev       # minden alkalommal
+```
+
+Ha a `.env` fájlban van a `CONTENTIZER_API_KEY=sk-...`, a `make dev` automatikusan használja.
 
 ### API key (required for Optimize)
 
