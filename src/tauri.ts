@@ -15,6 +15,14 @@ export async function optimizeText(
   });
 }
 
+export async function hasApiKey(): Promise<boolean> {
+  return invoke<boolean>('has_api_key');
+}
+
+export async function setApiKey(apiKey: string): Promise<void> {
+  return invoke('set_api_key', { apiKey });
+}
+
 export async function getSettings(): Promise<AppSettings> {
   return invoke<AppSettings>('get_settings');
 }

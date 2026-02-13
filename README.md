@@ -55,7 +55,7 @@ A projekt tartalmaz egy `Makefile`-t, így rövidebb parancsokkal is futtatható
 |---------|------------|
 | `make` / `make help` | Kiírja az elérhető parancsokat |
 | `make install` | `npm install` |
-| `make dev` | Tauri dev szerver; ha van `.env`, abból betölti a környezeti változókat (`CONTENTIZER_API_KEY`, `CONTENTIZER_MODEL`, stb.) |
+| `make dev` | Tauri dev szerver (`.env` fallback támogatott devben) |
 | `make build` | Production build (frontend + Rust) |
 | `make clean` | Törli a `node_modules`, `dist` és a Rust `target` mappát |
 | `make lint` | ESLint |
@@ -68,36 +68,29 @@ make install   # egyszer
 make dev       # minden alkalommal
 ```
 
-Ha a `.env` fájlban van a `CONTENTIZER_API_KEY=sk-...` (és opcionálisan `CONTENTIZER_MODEL=...`), a `make dev` automatikusan használja.
+### First-run API key setup
 
-### Environment variables (required for Optimize)
+On first launch, the app asks for an OpenAI-compatible API key in a setup modal.  
+The key is stored in macOS Keychain and reused on next launches.
 
-Set your OpenAI (or OpenAI-compatible) API key in the environment before starting the app.  
-Optionally, set model and prompt controls too:
+In local development, there is a fallback: if Keychain has no key, debug builds can use `CONTENTIZER_API_KEY` from environment (for example via `make dev` + `.env`).
 
-```bash
-export CONTENTIZER_API_KEY="sk-..."
-export CONTENTIZER_MODEL="gpt-4o-mini"
-export CONTENTIZER_LANGUAGE="English"
-export CONTENTIZER_OUTPUT_MAX_CHARS="1200"
-export CONTENTIZER_INPUT_MAX_CHARS="4000"
-export CONTENTIZER_DAILY_QUOTA="20"
-npm run tauri dev
-```
-
-Global instructions can be defined in a prompt file (first existing file is used):
+Example `.env` for local dev fallback:
 
 ```bash
-.prompt
-# or
-global.prompt
-# or
-prompt.txt
-# or
-global_prompt.txt
+CONTENTIZER_API_KEY=sk-...
 ```
 
-The key is never stored in the app or sent to the frontend; it is read only in the Tauri backend.
+Runtime defaults are hardcoded in backend:
+
+- model: `gpt-4o-mini`
+- language: `Hungarian`
+- input max: `4000` chars
+- output max guidance: `1200` chars
+- daily quota: `20` requests/day
+- strict safety global prompt is hardcoded
+
+The key is never stored in the frontend; it is read/used only in the Tauri backend.
 
 ---
 
@@ -106,7 +99,7 @@ The key is never stored in the app or sent to the frontend; it is read only in t
 ```
 contentizer/
 ├── src/                      # Frontend (React + Vite)
-│   ├── components/           # TopBar, PresetSelector, TextAreas, HistoryList
+│   ├── components/           # TopBar, HistoryList, ...
 │   ├── pages/                # Optimize, History
 │   ├── types.ts
 │   ├── tauri.ts              # Tauri invoke wrappers
@@ -130,22 +123,18 @@ contentizer/
 
 ## 4. Features (MVP)
 
-- **Optimize:** Input text, Category + Style dropdowns, optional extra instructions → “Optimize” → output with Copy / Clear / Swap.
+- **Optimize:** Single textarea workflow with settings popup (Category/Style + extra instructions), Optimize button, Copy feedback, Regen limit.
 - **History:** Last ~20 requests stored locally (Tauri store plugin).
-- **Runtime config:** API key/model/language/global prompt and limits come from env variables.
+- **Runtime config:** API key via Keychain (or dev env fallback), model/language/limits/prompt are hardcoded defaults.
 
 ---
 
 ## 5. Security
 
-- API key is **never** hardcoded or exposed to the frontend.
-- API key is read from `CONTENTIZER_API_KEY` in the process environment.
-- Model can be set with `CONTENTIZER_MODEL` (defaults to `gpt-4o-mini` if missing).
-- Output language can be forced with `CONTENTIZER_LANGUAGE`.
-- Global prompt instructions are read from prompt file (`.prompt`, `global.prompt`, `prompt.txt`, `global_prompt.txt`).
-- Input/output length controls: `CONTENTIZER_INPUT_MAX_CHARS`, `CONTENTIZER_OUTPUT_MAX_CHARS`.
-- Daily anti-spam quota: `CONTENTIZER_DAILY_QUOTA` (default: 20 requests/day).
-- **Keychain mode:** placeholder for future; use `tauri-plugin-keychain` to store/retrieve the key on macOS.
+- API key is never hardcoded in source.
+- API key is stored in macOS Keychain after first-run setup.
+- In debug mode only, `.env` (`CONTENTIZER_API_KEY`) can be used as fallback when Keychain is empty.
+- Model, language, safety prompt, and limits are hardcoded backend defaults.
 
 ---
 

@@ -1,4 +1,5 @@
 use crate::llm::{build_system_prompt, build_user_message, OpenAIClient, LLMClient};
+use keyring::Entry;
 use crate::presets;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -12,6 +13,11 @@ const MAX_HISTORY_LEN: usize = 20;
 const DEFAULT_DAILY_QUOTA: u32 = 20;
 const DEFAULT_INPUT_MAX_CHARS: usize = 4000;
 const DEFAULT_OUTPUT_MAX_CHARS: usize = 1200;
+const DEFAULT_MODEL: &str = "gpt-4o-mini";
+const DEFAULT_LANGUAGE: &str = "Hungarian";
+const DEFAULT_GLOBAL_PROMPT: &str = "You must only perform safe, lawful, non-deceptive copy optimization. If the request appears malicious, manipulative, fraudulent, or unsafe, refuse briefly.";
+const KEYCHAIN_SERVICE: &str = "com.contentizer.app";
+const KEYCHAIN_ACCOUNT: &str = "contentizer_api_key";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
@@ -46,69 +52,35 @@ fn get_store(app: &AppHandle) -> Result<std::sync::Arc<tauri_plugin_store::Store
         .map_err(|e| format!("Failed to load store: {}", e))
 }
 
-fn get_api_key(settings: &AppSettings) -> Result<String, String> {
-    match settings.provider_mode.as_str() {
-        "env" => std::env::var("CONTENTIZER_API_KEY").map_err(|_| {
-            "API key not set. In dev, set CONTENTIZER_API_KEY in your environment.".to_string()
-        }),
-        "keychain" => {
-            // When tauri-plugin-keychain is added: retrieve key here.
-            Err("Keychain mode not configured. Use env mode and set CONTENTIZER_API_KEY for now.".to_string())
-        }
-        _ => Err("Unknown provider mode. Use 'env' or 'keychain'.".to_string()),
+fn keychain_entry() -> Result<Entry, String> {
+    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).map_err(|e| format!("Keychain init failed: {}", e))
+}
+
+fn get_api_key_from_env() -> Option<String> {
+    std::env::var("CONTENTIZER_API_KEY")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn get_api_key() -> Result<String, String> {
+    let entry = keychain_entry()?;
+    if let Some(value) = entry
+        .get_password()
+        .map(|value| value.trim().to_string())
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(value);
     }
-}
 
-fn get_model_from_env() -> Option<String> {
-    std::env::var("CONTENTIZER_MODEL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn get_language_from_env() -> Option<String> {
-    std::env::var("CONTENTIZER_LANGUAGE")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn read_prompt_file(path: &std::path::Path) -> Option<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn get_global_prompt_from_file() -> Option<String> {
-    let current_dir = std::env::current_dir().ok()?;
-    let candidates = [
-        ".prompt",
-        "global.prompt",
-        "prompt.txt",
-        "global_prompt.txt",
-    ];
-    for relative in candidates {
-        let path = current_dir.join(relative);
-        if let Some(content) = read_prompt_file(&path) {
-            return Some(content);
+    if cfg!(debug_assertions) {
+        if let Some(value) = get_api_key_from_env() {
+            return Ok(value);
         }
     }
-    None
-}
 
-fn get_env_u32(name: &str, default: u32) -> u32 {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.trim().parse::<u32>().ok())
-        .unwrap_or(default)
-}
-
-fn get_env_usize(name: &str, default: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(default)
+    Err("API key is missing. Please set it first.".to_string())
 }
 
 fn current_day_bucket_utc() -> u64 {
@@ -120,7 +92,7 @@ fn current_day_bucket_utc() -> u64 {
 }
 
 fn consume_daily_quota(app: &AppHandle) -> Result<(), String> {
-    let limit = get_env_u32("CONTENTIZER_DAILY_QUOTA", DEFAULT_DAILY_QUOTA);
+    let limit = DEFAULT_DAILY_QUOTA;
     if limit == 0 {
         return Ok(());
     }
@@ -165,7 +137,7 @@ pub async fn optimize_text(
     if trimmed_input.is_empty() {
         return Err("Enter some text to optimize.".to_string());
     }
-    let input_limit = get_env_usize("CONTENTIZER_INPUT_MAX_CHARS", DEFAULT_INPUT_MAX_CHARS);
+    let input_limit = DEFAULT_INPUT_MAX_CHARS;
     if trimmed_input.chars().count() > input_limit {
         return Err(format!(
             "Input too long. Limit is {} characters.",
@@ -180,14 +152,13 @@ pub async fn optimize_text(
     let mut settings: AppSettings = serde_json::from_value(settings_value.unwrap_or(serde_json::Value::Null))
         .unwrap_or_default();
     if settings.provider_mode.is_empty() {
-        settings.provider_mode = "env".into();
+        settings.provider_mode = "local".into();
     }
-    let api_key = get_api_key(&settings)?;
-    let model = get_model_from_env();
-    let language = get_language_from_env();
-    let global_prompt = get_global_prompt_from_file();
-    let output_max_chars =
-        Some(get_env_usize("CONTENTIZER_OUTPUT_MAX_CHARS", DEFAULT_OUTPUT_MAX_CHARS));
+    let api_key = get_api_key()?;
+    let model = Some(DEFAULT_MODEL.to_string());
+    let language = Some(DEFAULT_LANGUAGE.to_string());
+    let global_prompt = Some(DEFAULT_GLOBAL_PROMPT.to_string());
+    let output_max_chars = Some(DEFAULT_OUTPUT_MAX_CHARS);
     let client: Box<dyn LLMClient> = Box::new(OpenAIClient::new(
         api_key,
         settings.api_base_url.clone(),
@@ -227,6 +198,38 @@ pub async fn optimize_text(
     Ok(text)
 }
 
+#[tauri::command]
+pub async fn has_api_key(app: AppHandle) -> Result<bool, String> {
+    let _ = app;
+    let entry = keychain_entry()?;
+    let has_keychain_key = entry
+        .get_password()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    if has_keychain_key {
+        return Ok(true);
+    }
+    if cfg!(debug_assertions) {
+        return Ok(get_api_key_from_env().is_some());
+    }
+    Ok(false)
+}
+
+#[tauri::command]
+pub async fn set_api_key(app: AppHandle, api_key: String) -> Result<(), String> {
+    let trimmed = api_key.trim();
+    if trimmed.is_empty() {
+        return Err("API key cannot be empty.".to_string());
+    }
+
+    let _ = app;
+    let entry = keychain_entry()?;
+    entry
+        .set_password(trimmed)
+        .map_err(|e| format!("Failed to store API key in Keychain: {}", e))?;
+    Ok(())
+}
+
 async fn add_history_item_inner(app: &AppHandle, item: HistoryItem) -> Result<(), String> {
     let store = get_store(app)?;
     let mut history: Vec<HistoryItem> = store
@@ -249,7 +252,7 @@ pub async fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
     let mut settings: AppSettings = serde_json::from_value(value.unwrap_or(serde_json::Value::Null))
         .unwrap_or_default();
     if settings.provider_mode.is_empty() {
-        settings.provider_mode = "env".into();
+        settings.provider_mode = "local".into();
     }
     // Never send key to frontend
     settings.api_key = None;
@@ -259,9 +262,12 @@ pub async fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
 #[tauri::command]
 pub async fn set_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
     let store = get_store(&app)?;
-    // Don't persist api_key from frontend; key is env or keychain only
+    let existing_value = store.get(SETTINGS_KEY);
+    let existing: AppSettings = serde_json::from_value(existing_value.unwrap_or(serde_json::Value::Null))
+        .unwrap_or_default();
+    // Keep persisted API key untouched here.
     let to_save = AppSettings {
-        api_key: None,
+        api_key: existing.api_key,
         provider_mode: settings.provider_mode,
         api_base_url: settings.api_base_url,
         model: settings.model,

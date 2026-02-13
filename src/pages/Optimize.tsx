@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Check, Copy, RefreshCw, Settings2 } from 'lucide-react';
-import { getPresets, optimizeText } from '../tauri';
+import { getPresets, hasApiKey, optimizeText, setApiKey } from '../tauri';
 import type { Presets as PresetsType } from '../types';
 
 const INPUT_MAX_CHARS = 4000;
@@ -18,6 +18,10 @@ export function Optimize() {
   const [extraInstructions, setExtraInstructions] = useState('');
   const [regenCount, setRegenCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isApiKeyReady, setIsApiKeyReady] = useState(false);
+  const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const copyResetTimerRef = useRef<number | null>(null);
@@ -34,6 +38,12 @@ export function Optimize() {
         }
       })
       .catch(() => setError('Failed to load presets'));
+  }, []);
+
+  useEffect(() => {
+    hasApiKey()
+      .then((exists) => setIsApiKeyReady(exists))
+      .catch(() => setApiKeyError('Failed to check API key state.'));
   }, []);
 
   useEffect(() => {
@@ -79,7 +89,11 @@ export function Optimize() {
           setRegenCount(0);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        const message = e instanceof Error ? e.message : String(e);
+        setError(message);
+        if (message.toLowerCase().includes('api key')) {
+          setIsApiKeyReady(false);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -111,6 +125,25 @@ export function Optimize() {
       // clipboard can fail in some webview environments
     }
   }, [text]);
+
+  const handleSaveApiKey = useCallback(async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) {
+      setApiKeyError('API key is required.');
+      return;
+    }
+    setApiKeyError(null);
+    setIsSavingApiKey(true);
+    try {
+      await setApiKey(trimmed);
+      setApiKeyInput('');
+      setIsApiKeyReady(true);
+    } catch (e) {
+      setApiKeyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsSavingApiKey(false);
+    }
+  }, [apiKeyInput]);
 
   return (
     <div className='relative flex flex-col h-full min-h-0 p-4 gap-4'>
@@ -229,7 +262,7 @@ export function Optimize() {
         <button
           type='button'
           onClick={handleOptimize}
-          disabled={isLoading || !presets}
+          disabled={isLoading || !presets || !isApiKeyReady}
           className='px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none transition-colors'
         >
           {isLoading ? 'Optimizing…' : 'Optimize'}
@@ -273,6 +306,40 @@ export function Optimize() {
         <p className='text-sm text-red-600 dark:text-red-400' role='alert'>
           {error}
         </p>
+      )}
+
+      {!isApiKeyReady && (
+        <div className='absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/50 p-4'>
+          <div className='w-full max-w-md rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 shadow-xl space-y-3'>
+            <h2 className='text-base font-semibold text-zinc-900 dark:text-zinc-100'>
+              Set API key
+            </h2>
+            <p className='text-sm text-zinc-600 dark:text-zinc-400'>
+              First run setup: enter your OpenAI API key to continue.
+            </p>
+            <input
+              type='password'
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder='sk-...'
+              className='w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500'
+              disabled={isSavingApiKey}
+            />
+            {apiKeyError && (
+              <p className='text-sm text-red-600 dark:text-red-400' role='alert'>
+                {apiKeyError}
+              </p>
+            )}
+            <button
+              type='button'
+              onClick={handleSaveApiKey}
+              disabled={isSavingApiKey}
+              className='w-full px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none transition-colors'
+            >
+              {isSavingApiKey ? 'Saving…' : 'Save API key'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

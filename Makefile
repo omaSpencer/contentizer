@@ -3,15 +3,11 @@
 
 .PHONY: install dev build clean lint check-rust rustup-default
 
-# .env betöltése, ha létezik (pl. CONTENTIZER_API_KEY)
--include .env
-export
-
 # Alapértelmezett: help
 help:
 	@echo "Parancsok:"
 	@echo "  make install   - npm install"
-	@echo "  make dev       - Tauri dev szerver (.env-ból tölti az API kulcsot)"
+	@echo "  make dev       - Tauri dev szerver (.env-ból is tölti a CONTENTIZER_API_KEY-t)"
 	@echo "  make build     - Tauri production build"
 	@echo "  make clean     - node_modules, dist, Rust target törlése"
 	@echo "  make lint      - ESLint"
@@ -25,7 +21,7 @@ install:
 CARGO_ENV := $(HOME)/.cargo/env
 RUN_WITH_RUST = [ -f "$(CARGO_ENV)" ] && . "$(CARGO_ENV)"; 
 
-# Fejlesztés: .env betöltése, majd tauri dev
+# Fejlesztés: tauri dev (.env betöltéssel, ha van)
 dev:
 	@$(RUN_WITH_RUST) command -v cargo >/dev/null 2>&1 || { echo "Hiba: Cargo nincs a PATH-on. Telepítsd: brew install rust"; exit 1; }
 	@$(RUN_WITH_RUST) if [ -f .env ]; then set -a && . ./.env && set +a; fi; npm run tauri dev

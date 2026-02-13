@@ -9,6 +9,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             commands::optimize_text,
+            commands::has_api_key,
+            commands::set_api_key,
             commands::get_settings,
             commands::set_settings,
             commands::get_history,
