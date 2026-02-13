@@ -112,9 +112,39 @@ impl LLMClient for OpenAIClient {
 }
 
 /// Build the system prompt for the copy editor.
-pub fn build_system_prompt() -> String {
-    "You are a professional copy editor. Your task is to improve the user's text according to the chosen category and style. \
-     Return ONLY the improved text—no explanations, no preamble, no markdown formatting unless the original had it.".into()
+pub fn build_system_prompt(
+    global_prompt: Option<&str>,
+    language: Option<&str>,
+    output_max_chars: Option<usize>,
+) -> String {
+    let mut parts = vec![
+        "You are a professional copy editor.".to_string(),
+        "Improve the user's text according to the selected category and style.".to_string(),
+        "Return ONLY the improved text. Do not add explanations, preamble, or markdown unless the input already uses markdown.".to_string(),
+    ];
+
+    if let Some(lang) = language {
+        let trimmed = lang.trim();
+        if !trimmed.is_empty() {
+            parts.push(format!("Write the output in {}.", trimmed));
+        }
+    }
+
+    if let Some(max_chars) = output_max_chars {
+        parts.push(format!(
+            "Keep the output concise and under {} characters.",
+            max_chars
+        ));
+    }
+
+    if let Some(extra_prompt) = global_prompt {
+        let trimmed = extra_prompt.trim();
+        if !trimmed.is_empty() {
+            parts.push(format!("Global instructions: {}", trimmed));
+        }
+    }
+
+    parts.join("\n")
 }
 
 /// Build the user message from category, style, extra instructions, and original text.

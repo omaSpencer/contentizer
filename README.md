@@ -55,7 +55,7 @@ A projekt tartalmaz egy `Makefile`-t, így rövidebb parancsokkal is futtatható
 |---------|------------|
 | `make` / `make help` | Kiírja az elérhető parancsokat |
 | `make install` | `npm install` |
-| `make dev` | Tauri dev szerver; ha van `.env`, abból betölti a `CONTENTIZER_API_KEY`-t |
+| `make dev` | Tauri dev szerver; ha van `.env`, abból betölti a környezeti változókat (`CONTENTIZER_API_KEY`, `CONTENTIZER_MODEL`, stb.) |
 | `make build` | Production build (frontend + Rust) |
 | `make clean` | Törli a `node_modules`, `dist` és a Rust `target` mappát |
 | `make lint` | ESLint |
@@ -68,17 +68,34 @@ make install   # egyszer
 make dev       # minden alkalommal
 ```
 
-Ha a `.env` fájlban van a `CONTENTIZER_API_KEY=sk-...`, a `make dev` automatikusan használja.
+Ha a `.env` fájlban van a `CONTENTIZER_API_KEY=sk-...` (és opcionálisan `CONTENTIZER_MODEL=...`), a `make dev` automatikusan használja.
 
-### API key (required for Optimize)
+### Environment variables (required for Optimize)
 
-1. **Settings** tab → choose **API key mode**: **Environment variable (dev)**.
-2. Set your OpenAI (or OpenAI-compatible) API key in the environment before starting the app:
+Set your OpenAI (or OpenAI-compatible) API key in the environment before starting the app.  
+Optionally, set model and prompt controls too:
 
-   ```bash
-   export CONTENTIZER_API_KEY="sk-..."
-   npm run tauri dev
-   ```
+```bash
+export CONTENTIZER_API_KEY="sk-..."
+export CONTENTIZER_MODEL="gpt-4o-mini"
+export CONTENTIZER_LANGUAGE="English"
+export CONTENTIZER_OUTPUT_MAX_CHARS="1200"
+export CONTENTIZER_INPUT_MAX_CHARS="4000"
+export CONTENTIZER_DAILY_QUOTA="20"
+npm run tauri dev
+```
+
+Global instructions can be defined in a prompt file (first existing file is used):
+
+```bash
+.prompt
+# or
+global.prompt
+# or
+prompt.txt
+# or
+global_prompt.txt
+```
 
 The key is never stored in the app or sent to the frontend; it is read only in the Tauri backend.
 
@@ -90,7 +107,7 @@ The key is never stored in the app or sent to the frontend; it is read only in t
 contentizer/
 ├── src/                      # Frontend (React + Vite)
 │   ├── components/           # TopBar, PresetSelector, TextAreas, HistoryList
-│   ├── pages/                # Optimize, History, Settings
+│   ├── pages/                # Optimize, History
 │   ├── types.ts
 │   ├── tauri.ts              # Tauri invoke wrappers
 │   ├── App.tsx
@@ -115,14 +132,19 @@ contentizer/
 
 - **Optimize:** Input text, Category + Style dropdowns, optional extra instructions → “Optimize” → output with Copy / Clear / Swap.
 - **History:** Last ~20 requests stored locally (Tauri store plugin).
-- **Settings:** Provider mode (env or keychain), optional API base URL and model. Key is never stored in frontend; env or Keychain only.
+- **Runtime config:** API key/model/language/global prompt and limits come from env variables.
 
 ---
 
 ## 5. Security
 
 - API key is **never** hardcoded or exposed to the frontend.
-- **Env mode:** key is read from `CONTENTIZER_API_KEY` in the process environment.
+- API key is read from `CONTENTIZER_API_KEY` in the process environment.
+- Model can be set with `CONTENTIZER_MODEL` (defaults to `gpt-4o-mini` if missing).
+- Output language can be forced with `CONTENTIZER_LANGUAGE`.
+- Global prompt instructions are read from prompt file (`.prompt`, `global.prompt`, `prompt.txt`, `global_prompt.txt`).
+- Input/output length controls: `CONTENTIZER_INPUT_MAX_CHARS`, `CONTENTIZER_OUTPUT_MAX_CHARS`.
+- Daily anti-spam quota: `CONTENTIZER_DAILY_QUOTA` (default: 20 requests/day).
 - **Keychain mode:** placeholder for future; use `tauri-plugin-keychain` to store/retrieve the key on macOS.
 
 ---

@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 const nav = [
   { path: '/', label: 'Optimize' },
   { path: '/history', label: 'History' },
-  { path: '/settings', label: 'Settings' },
 ];
 
 export function TopBar() {
